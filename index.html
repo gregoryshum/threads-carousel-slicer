@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Pinchable Carousel Slicer — 3:4 • Even Slices</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#0b0f14; --card:#0f172a; --ink:#e5e7eb; --muted:#94a3b8; --line:#1e293b; --accent:#22c55e; --warn:#f59e0b; --error:#ef4444;
+  --shadow:0 8px 24px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+.header{position:sticky;top:0;z-index:9;backdrop-filter:blur(10px);background:rgba(11,15,20,.75);border-bottom:1px solid var(--line)}
+.header-inner{display:flex;align-items:center;justify-content:space-between;padding:12px 16px}
+.container{max-width:760px;margin:0 auto;padding:12px 12px 84px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px}
+.hint{color:var(--muted);font-size:12px;margin-top:6px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.input{border:1px solid var(--line);background:#0b1220;color:#e5e7eb;padding:10px 12px;border-radius:12px}
+.btn{border:none;background:#1f2937;color:#e5e7eb;padding:12px 14px;border-radius:12px;cursor:pointer}
+.btn.primary{background:var(--accent);color:#04240f;font-weight:700}
+.btn.small{padding:8px 10px;border-radius:10px;font-size:13px}
+.actions{position:fixed;left:0;right:0;bottom:0;z-index:10;background:rgba(11,15,20,.9);border-top:1px solid var(--line);backdrop-filter:blur(10px)}
+.actions-inner{max-width:760px;margin:0 auto;padding:10px;display:flex;gap:10px}.actions .btn{flex:1}
+.cap{max-height:240px;width:100%;object-fit:contain;border-radius:12px}
+/* thumbs */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.thumb{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0b1220}
+.thumb img{display:block;width:100%;height:auto}
+.thumb .meta{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px;font-size:12px;color:#9ca3af}
+/* seam */
+#seamWrap{overflow-x:auto;overflow-y:hidden;border:1px solid var(--line);border-radius:12px;background:#0b1220;padding:6px}
+#seamRow{display:flex;gap:0}
+#seamRow img{height:180px;width:auto;display:block}
+/* warning banner */
+.warn{display:none;margin-top:10px;padding:10px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);border-radius:12px}
+.warn strong{color:#fde68a}
+.warn .row{justify-content:flex-end}
+.toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);background:#111827;color:#fff;border:1px solid var(--line);
+  padding:10px 12px;border-radius:10px;box-shadow:var(--shadow);font-size:13px;display:none}
+.toast.show{display:block}
+</style>
+</head>
+<body>
+  <div class="header"><div class="header-inner">
+    <div><strong>Pinchable Carousel Slicer</strong><div class="hint">3:4 portrait • Even slices</div></div>
+    <button id="newBtn" class="btn small">New image</button>
+  </div></div>
+
+  <div class="container">
+    <div class="card">
+      <div class="row">
+        <input id="fileLib" class="input" type="file" accept="image/*">
+        <input id="fileCam" class="input" type="file" accept="image/*" capture="environment" style="display:none">
+        <button id="libBtn" class="btn">Choose from Library</button>
+        <button id="camBtn" class="btn">Use Camera</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="hint">Slices <input id="slices" class="input" style="width:84px" type="number" min="2" max="12" value="3"></label>
+        <label class="hint">Export width (px) <input id="exportW" class="input" style="width:110px" type="number" min="600" max="4096" value="1080"></label>
+        <label class="hint">Format
+          <select id="format" class="input" style="width:140px">
+            <option value="image/png" selected>PNG (recommended)</option>
+            <option value="image/jpeg">JPEG (q=0.95)</option>
+          </select>
+        </label>
+        <label class="hint"><input id="snapInt" type="checkbox" checked> integer‑snap</label>
+      </div>
+      <div id="meta" class="hint"></div>
+
+      <div id="warn" class="warn">
+        <div><strong>Heads up:</strong> The image width <span id="w0"></span> doesn’t divide evenly by <span id="n0"></span> slices.
+          Auto‑crop <span id="cropPx"></span> px (centered) to <span id="w1"></span> so each tile is <em>exactly equal</em>.</div>
+        <div class="row" style="margin-top:8px">
+          <button id="autoBtn" class="btn small" style="background:var(--accent);color:#04240f">Auto‑crop & continue</button>
+          <button id="proceedBtn" class="btn small">Proceed without</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="previewCard" style="margin-top:12px;display:none">
+      <img id="preview" alt="source" class="cap">
+    </div>
+
+    <div class="card" id="outputCard" style="margin-top:12px;display:none">
+      <div class="row" style="justify-content:space-between">
+        <strong>Slices</strong><button id="zipBtn" class="btn small">Download .zip</button>
+      </div>
+      <div id="thumbs" class="grid" style="margin-top:10px"></div>
+
+      <div style="margin-top:12px">
+        <div class="row" style="justify-content:space-between">
+          <strong>Live Seam Checker</strong>
+          <label class="hint"><input id="seamBorders" type="checkbox"> borders</label>
+        </div>
+        <div id="seamWrap" style="margin-top:8px"><div id="seamRow"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions"><div class="actions-inner">
+    <button id="sliceBtn" class="btn primary" disabled>Slice</button>
+    <button id="dlAllBtn" class="btn" disabled>Download all</button>
+  </div></div>
+
+  <div id="toast" class="toast"></div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+const $ = (id)=>document.getElementById(id);
+const els = {
+  fileLib: $('fileLib'), fileCam: $('fileCam'),
+  libBtn: $('libBtn'), camBtn: $('camBtn'),
+  format: $('format'), slices: $('slices'), exportW: $('exportW'),
+  snapInt: $('snapInt'),
+  sliceBtn: $('sliceBtn'), dlAllBtn: $('dlAllBtn'),
+  previewCard: $('previewCard'), preview: $('preview'), meta: $('meta'),
+  outputCard: $('outputCard'), thumbs: $('thumbs'),
+  seamRow: $('seamRow'), seamBorders: $('seamBorders'),
+  warn: $('warn'), w0: $('w0'), n0: $('n0'), w1: $('w1'), cropPx: $('cropPx'),
+  autoBtn: $('autoBtn'), proceedBtn: $('proceedBtn'),
+  toast: $('toast'), zipBtn: $('zipBtn'),
+};
+let imgMeta=null, imgUrl=null, outputs=[], strictEven=false, pendingSlice=false;
+function toast(msg){ els.toast.textContent=msg; els.toast.classList.add('show'); setTimeout(()=>els.toast.classList.remove('show'), 1800); }
+function createCanvas(w,h){ const c=document.createElement('canvas'); c.width=Math.round(w*dpr); c.height=Math.round(h*dpr); const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.imageSmoothingQuality='high'; return {c, ctx}; }
+function resetAll(){ if(imgUrl) URL.revokeObjectURL(imgUrl); imgUrl=null; imgMeta=null; outputs=[]; strictEven=false; pendingSlice=false;
+  els.previewCard.style.display='none'; els.outputCard.style.display='none';
+  els.sliceBtn.disabled=true; els.dlAllBtn.disabled=true; els.thumbs.innerHTML=''; els.seamRow.innerHTML='';
+  els.warn.style.display='none'; els.meta.textContent='';
+}
+function handleFile(file){
+  if(!file || !/^image\//.test(file.type)) return toast('Pick an image');
+  if(/heic|heif/i.test(file.type)) return toast('Use JPG/PNG (HEIC not supported)');
+  if(imgUrl) URL.revokeObjectURL(imgUrl); imgUrl=URL.createObjectURL(file);
+  const img=new Image(); img.onload=()=>{
+    imgMeta={w:img.naturalWidth,h:img.naturalHeight};
+    els.preview.src=imgUrl; els.previewCard.style.display='block';
+    els.meta.textContent=`${imgMeta.w}×${imgMeta.h}px`;
+    els.sliceBtn.disabled=false; els.outputCard.style.display='none'; els.thumbs.innerHTML=''; els.seamRow.innerHTML='';
+  }; img.onerror=()=>toast('Failed to load image'); img.src=imgUrl;
+}
+els.libBtn.onclick=()=>els.fileLib.click(); els.camBtn.onclick=()=>els.fileCam.click();
+els.fileLib.onchange=e=>handleFile(e.target.files&&e.target.files[0]); els.fileCam.onchange=e=>handleFile(e.target.files&&e.target.files[0]);
+
+function calcEvenPlan(N){
+  const W=imgMeta.w, H=imgMeta.h, ASPECT=3/4;
+  const perW = Math.min(Math.floor(W/N), Math.floor(0.75*H));
+  const perH = Math.floor(perW/(ASPECT));
+  const totalW = perW*N;
+  const offsetX = Math.floor((W-totalW)/2);
+  const offsetY = Math.floor((H-perH)/2);
+  return {N, perW, perH, totalW, offsetX, offsetY, W, H};
+}
+function calcLoosePlan(N){
+  const W=imgMeta.w, H=imgMeta.h, ASPECT=3/4;
+  const sliceMaxW = Math.floor(W/N);
+  const cropH = Math.min(H, Math.floor(sliceMaxW/(ASPECT)));
+  const perW = Math.floor(cropH*ASPECT);
+  const totalW = perW*N;
+  const offsetX = Math.floor((W-totalW)/2);
+  const offsetY = Math.floor((H-cropH)/2);
+  let rem = W - (perW*N) - (offsetX*2);
+  const widths=[];
+  for(let i=0;i<N;i++){ let w=perW; if(rem>0){ w+=1; rem--; } widths.push(w); }
+  return {N, perW, cropH, widths, offsetX, offsetY, W, H};
+}
+function checkDivisible(N){ return imgMeta.w % N === 0; }
+function showWarn(N){
+  if(checkDivisible(N)){ els.warn.style.display='none'; return; }
+  const idealPer = Math.floor(imgMeta.w/N); const totalIdeal=idealPer*N;
+  els.w0.textContent=imgMeta.w; els.n0.textContent=N; els.w1.textContent=totalIdeal; els.cropPx.textContent=(imgMeta.w-totalIdeal);
+  els.warn.style.display='block';
+}
+
+async function doSlice(){
+  if(!imgMeta) return;
+  const N = Math.max(2, Math.min(12, parseInt(els.slices.value||'3')));
+  if(!checkDivisible(N) && !strictEven){ showWarn(N); pendingSlice=true; toast('Width not divisible — choose an option.'); return; }
+  outputs=[]; els.thumbs.innerHTML=''; els.seamRow.innerHTML='';
+  const usePng = els.format.value==='image/png'; const exportCap=Math.max(600,Math.min(4096,parseInt(els.exportW.value||'1080')));
+  const img=new Image(); img.src=imgUrl; await img.decode();
+  if(strictEven){
+    const p=calcEvenPlan(N);
+    for(let i=0;i<N;i++){
+      const sx=p.offsetX + i*p.perW, sy=p.offsetY, sw=p.perW, sh=p.perH;
+      const targetW=Math.min(exportCap,p.perW), targetH=Math.floor(targetW/(3/4));
+      const {c,ctx}=createCanvas(targetW,targetH); ctx.drawImage(img,sx,sy,sw,sh,0,0,targetW,targetH);
+      const url=c.toDataURL(els.format.value, usePng?undefined:0.95); const name=`threads_3x4_${String(i+1).padStart(3,'0')}.${usePng?'png':'jpg'}`;
+      outputs.push({url,name});
+    }
+  }else{
+    const p=calcLoosePlan(N);
+    for(let i=0,acc=0;i<N;i++){ const sw=p.widths[i], sx=p.offsetX+acc; acc+=sw;
+      const sy=p.offsetY, sh=p.cropH; const targetW=Math.min(exportCap,p.perW), targetH=Math.floor(targetW/(3/4));
+      const {c,ctx}=createCanvas(targetW,targetH); ctx.drawImage(img,sx,sy,sw,sh,0,0,targetW,targetH);
+      const url=c.toDataURL(els.format.value, usePng?undefined:0.95); const name=`threads_3x4_${String(i+1).padStart(3,'0')}.${usePng?'png':'jpg'}`;
+      outputs.push({url,name});
+    }
+  }
+  outputs.forEach(o=>{
+    const card=document.createElement('div'); card.className='thumb';
+    const im=document.createElement('img'); im.src=o.url; im.alt=o.name; im.loading='lazy';
+    const meta=document.createElement('div'); meta.className='meta';
+    const span=document.createElement('span'); span.textContent=o.name; const btn=document.createElement('button'); btn.className='btn small'; btn.textContent='Save'; btn.onclick=()=>downloadURI(o.url,o.name);
+    meta.appendChild(span); meta.appendChild(btn); card.appendChild(im); card.appendChild(meta); els.thumbs.appendChild(card);
+    const s=document.createElement('img'); s.src=o.url; s.alt=o.name; s.style.display='block'; els.seamRow.appendChild(s);
+  });
+  els.outputCard.style.display='block'; els.dlAllBtn.disabled=false; els.warn.style.display='none'; pendingSlice=false; toast('Equal slices ready');
+}
+els.sliceBtn.onclick=doSlice;
+els.autoBtn.onclick=()=>{ strictEven=true; if(pendingSlice) doSlice(); };
+els.proceedBtn.onclick=()=>{ strictEven=false; if(pendingSlice) doSlice(); };
+
+function downloadURI(uri, filename){ const a=document.createElement('a'); a.href=uri; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }
+els.dlAllBtn.onclick=async()=>{ if(!outputs.length) return; const zip=new JSZip(); const folder=zip.folder('slices');
+  await Promise.all(outputs.map(async o=>{ const res=await fetch(o.url); const blob=await res.blob(); folder.file(o.name, blob); }));
+  const blob=await zip.generateAsync({type:'blob'}); const url=URL.createObjectURL(blob); downloadURI(url,'panorama_slices_3x4_even.zip'); URL.revokeObjectURL(url);
+};
+els.zipBtn.onclick=()=>els.dlAllBtn.onclick();
+
+$('newBtn').onclick=resetAll;
+els.seamBorders.onchange=()=>{ const on=els.seamBorders.checked; els.seamRow.querySelectorAll('img').forEach(im=>im.style.outline=on?'1px solid magenta':'none'); };
+</script>
+</body>
+</html>
