@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Pinchable Carousel Slicer — Mobile First • 3:4 Portrait</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#0b0f14; --card:#0f172a; --ink:#e5e7eb; --muted:#94a3b8; --line:#1e293b; --accent:#22c55e; --accent-ink:#052e1a;
+  --danger:#ef4444; --shadow:0 8px 24px rgba(0,0,0,.25);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+/* Header */
+.header{position:sticky;top:0;z-index:9;backdrop-filter:blur(10px);background:rgba(11,15,20,.75);border-bottom:1px solid var(--line)}
+.header-inner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px}
+.brand{display:flex;align-items:center;gap:10px}
+.badge{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;background:#111}
+/* Main */
+.container{max-width:760px;margin:0 auto;padding:12px 12px 84px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px}
+.hint{color:var(--muted);font-size:12px;margin-top:6px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.input{border:1px solid var(--line);background:#0b1220;color:#e5e7eb;padding:10px 12px;border-radius:12px}
+.btn{border:none;background:#1f2937;color:#e5e7eb;padding:12px 14px;border-radius:12px}
+.btn.primary{background:#22c55e;color:#04240f;font-weight:700}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn.small{padding:8px 10px;border-radius:10px;font-size:13px}
+.btn:disabled{opacity:.5}
+/* Preview constraints */
+.cap{max-height:240px;width:100%;object-fit:contain;border-radius:12px}
+#seamWrap{overflow-x:auto;overflow-y:hidden;border:1px solid var(--line);border-radius:12px;background:#0b1220;padding:6px}
+#seamRow{display:flex;gap:0}
+#seamRow img{height:180px;width:auto;display:block}
+/* Thumbs */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.thumb{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#0b1220}
+.thumb img{display:block;width:100%;height:auto}
+.thumb .meta{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px;font-size:12px;color:var(--muted)}
+/* Action bar */
+.actions{position:fixed;left:0;right:0;bottom:0;z-index:10;background:rgba(11,15,20,.9);border-top:1px solid var(--line);backdrop-filter:blur(10px)}
+.actions-inner{max-width:760px;margin:0 auto;padding:10px;display:flex;gap:10px}
+.actions .btn{flex:1}
+/* Toast */
+.toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);background:#111827;color:#fff;border:1px solid var(--line);
+  padding:10px 12px;border-radius:10px;box-shadow:var(--shadow);font-size:13px;display:none}
+.toast.show{display:block}
+/* Simple Image Modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:20}
+.modal.open{display:flex}
+.modal-inner{max-width:100vw;max-height:100vh;padding:12px;position:relative}
+.modal img{max-width:100%;max-height:85vh;border-radius:12px;display:block;margin:0 auto}
+.modal .close{position:absolute;top:16px;right:16px}
+/* Seam Lightbox */
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;z-index:30;flex-direction:column}
+.lb.open{display:flex}
+.lb-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
+.lb-title{font-weight:700}
+.lb-body{flex:1;overflow:auto;padding:10px}
+.lb-toolbar{display:flex;gap:8px;align-items:center}
+.lb-canvas{width:fit-content;transform-origin:0 0}
+.lb-row{display:flex;gap:0}
+.lb-row img{height:auto;max-height:85vh;display:block}
+.lb-close{border:none;background:#111827;color:#fff;padding:8px 10px;border-radius:10px}
+.lb-range{accent-color:#22c55e}
+@media (min-width:768px){
+  .cap{max-height:300px}
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-inner">
+      <div class="brand"><div class="badge">✂️</div><div><strong>Pinchable Carousel Slicer</strong><div class="hint">3:4 portrait • Seamless • Mobile‑first</div></div></div>
+      <button id="newBtn" class="btn small ghost">New image</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Uploader -->
+    <div class="card" id="uploadCard">
+      <div class="row">
+        <input id="fileLib" class="input" type="file" accept="image/*">
+        <input id="fileCam" class="input" type="file" accept="image/*" capture="environment" style="display:none">
+        <button id="libBtn" class="btn ghost">Choose from Library</button>
+        <button id="camBtn" class="btn ghost">Use Camera</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label class="hint">Slices&nbsp;<input id="slices" class="input" style="width:84px" type="number" min="2" max="12" value="3"></label>
+        <label class="hint">Export width (px)&nbsp;<input id="exportW" class="input" style="width:110px" type="number" min="600" max="4096" value="1600"></label>
+      </div>
+      <div id="log" class="hint" style="margin-top:8px;display:none"></div>
+      <div class="hint">Largest centered <strong>3:4</strong> area that fits N tiles; export capped to width (no upscaling past source crop).</div>
+    </div>
+
+    <!-- Preview -->
+    <div class="card" id="previewCard" style="margin-top:12px;display:none">
+      <img id="preview" alt="source" class="cap">
+      <div class="hint" id="meta" style="margin-top:6px"></div>
+    </div>
+
+    <!-- Output -->
+    <div class="card" id="outputCard" style="margin-top:12px;display:none">
+      <div class="row" style="justify-content:space-between">
+        <strong>Slices</strong>
+        <button id="zipBtn" class="btn small">Download .zip</button>
+      </div>
+      <div id="thumbs" class="grid" style="margin-top:10px"></div>
+
+      <div style="margin-top:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+          <strong>Live Seam Checker</strong>
+          <div class="row" style="gap:8px">
+            <label class="hint"><input id="seamBorders" type="checkbox"> borders</label>
+            <button id="seamOpen" class="btn small ghost">Open lightbox</button>
+          </div>
+        </div>
+        <div id="seamWrap" style="margin-top:8px">
+          <div id="seamRow"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom action bar -->
+  <div class="actions">
+    <div class="actions-inner">
+      <button id="sliceBtn" class="btn primary" disabled>Slice</button>
+      <button id="dlAllBtn" class="btn" disabled>Download all</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <!-- Simple Image Modal (for single thumbs) -->
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-inner">
+      <img id="modalImg" alt="expanded">
+      <button class="btn small close" id="modalClose">Close ×</button>
+    </div>
+  </div>
+
+  <!-- Seam Lightbox Modal -->
+  <div id="lb" class="lb" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="lb-header">
+      <div class="lb-title">Seam Lightbox</div>
+      <div class="lb-toolbar">
+        <label class="hint">Zoom <input id="lbZoom" class="lb-range" type="range" min="30" max="200" value="60"></label>
+        <button id="lbClose" class="lb-close">Close ×</button>
+      </div>
+    </div>
+    <div class="lb-body">
+      <div id="lbCanvas" class="lb-canvas">
+        <div id="lbRow" class="lb-row"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+const $ = (id)=>document.getElementById(id);
+const els = {
+  fileLib: $('fileLib'), fileCam: $('fileCam'),
+  libBtn: $('libBtn'), camBtn: $('camBtn'),
+  slices: $('slices'), exportW: $('exportW'),
+  sliceBtn: $('sliceBtn'), dlAllBtn: $('dlAllBtn'),
+  previewCard: $('previewCard'), preview: $('preview'), meta: $('meta'),
+  outputCard: $('outputCard'), thumbs: $('thumbs'),
+  seamWrap: $('seamWrap'), seamRow: $('seamRow'), seamBorders: $('seamBorders'), seamOpen: $('seamOpen'),
+  log: $('log'), toast: $('toast'),
+  zipBtn: $('zipBtn'), newBtn: $('newBtn'),
+  modal: $('modal'), modalImg: $('modalImg'), modalClose: $('modalClose'),
+  lb: $('lb'), lbRow: $('lbRow'), lbCanvas: $('lbCanvas'), lbZoom: $('lbZoom'), lbClose: $('lbClose'),
+};
+function toast(msg){ els.toast.textContent = msg; els.toast.classList.add('show'); setTimeout(()=>els.toast.classList.remove('show'), 1800); }
+function log(msg){ els.log.style.display='block'; els.log.textContent = msg; }
+
+let imgMeta = null, imgUrl = null, outputs = [];
+
+function createCanvas(w,h){
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+  const ctx = c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.imageSmoothingQuality='high';
+  return {c, ctx};
+}
+
+function resetAll(){
+  imgMeta = null; if (imgUrl) URL.revokeObjectURL(imgUrl); imgUrl = null;
+  els.previewCard.style.display = 'none';
+  els.outputCard.style.display = 'none';
+  els.sliceBtn.disabled = true; els.dlAllBtn.disabled = true;
+  els.thumbs.innerHTML = ''; els.seamRow.innerHTML = ''; els.lbRow.innerHTML='';
+  els.log.style.display='none';
+}
+
+function handleFile(file){
+  try{
+    if(!file){ toast('No file selected'); return; }
+    if(!/^image\//.test(file.type)){ toast('Pick an image'); return; }
+    if(/heic|heif/i.test(file.type)){ toast('HEIC not supported. Use JPG/PNG.'); return; }
+    if(imgUrl) URL.revokeObjectURL(imgUrl);
+    imgUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      imgMeta = { w: img.naturalWidth, h: img.naturalHeight };
+      els.preview.src = imgUrl; els.previewCard.style.display='block';
+      els.meta.textContent = `${imgMeta.w} × ${imgMeta.h}px`;
+      els.sliceBtn.disabled = false; toast('Image loaded');
+      els.outputCard.style.display='none'; els.thumbs.innerHTML=''; els.seamRow.innerHTML=''; els.lbRow.innerHTML='';
+      els.preview.onclick = ()=> openModal(imgUrl);
+    };
+    img.onerror = ()=> toast('Failed to load. Try JPG/PNG.');
+    img.src = imgUrl;
+  }catch(e){ toast('Error: '+e.message); }
+}
+
+els.libBtn.onclick = ()=> els.fileLib.click();
+els.camBtn.onclick = ()=> els.fileCam.click();
+els.fileLib.onchange = (e)=> handleFile(e.target.files && e.target.files[0]);
+els.fileCam.onchange = (e)=> handleFile(e.target.files && e.target.files[0]);
+$('newBtn').onclick = resetAll;
+
+function computePlan(){
+  if(!imgMeta) return null;
+  const W = imgMeta.w, H = imgMeta.h;
+  const N = Math.max(2, Math.min(12, parseInt(els.slices.value || '2')));
+  const ASPECT = 3/4; // width:height = 3:4 (portrait)
+  const sliceMaxW = Math.floor(W / N);
+  const cropHByWidth = sliceMaxW / ASPECT;
+  const cropH = Math.min(H, cropHByWidth);
+  if (cropH < 2) return null;
+  const sliceW = Math.round(cropH * ASPECT);
+  const totalW = sliceW * N;
+  const offsetX = (W - totalW) / 2;
+  const offsetY = (H - cropH) / 2;
+  return { N, sliceW, cropH, totalW, offsetX, offsetY, W, H, ASPECT };
+}
+
+els.sliceBtn.onclick = async ()=>{
+  if(!imgMeta) return;
+  const plan = computePlan(); if(!plan){ toast('Use a wider image'); return; }
+  const img = new Image(); img.src = imgUrl; await img.decode();
+  outputs = []; els.thumbs.innerHTML=''; els.seamRow.innerHTML=''; els.lbRow.innerHTML='';
+
+  const exportCap = Math.max(600, Math.min(4096, parseInt(els.exportW.value || '1600')));
+  for(let i=0;i<plan.N;i++){
+    const sx = plan.offsetX + i*plan.sliceW, sy = plan.offsetY, sw = plan.sliceW, sh = plan.cropH;
+    const targetW = Math.min(exportCap, Math.round(sw));
+    const targetH = Math.round(targetW / plan.ASPECT);
+    const {c, ctx} = createCanvas(targetW, targetH);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+    const dataUrl = c.toDataURL('image/jpeg', 0.92);
+    const name = `threads_3x4_${String(i+1).padStart(3,'0')}.jpg`;
+    outputs.push({url:dataUrl, name, w:targetW, h:targetH});
+
+    const card = document.createElement('div'); card.className='thumb';
+    const im = document.createElement('img'); im.src = dataUrl; im.alt = name; im.loading='lazy';
+    im.onclick = ()=> openModal(dataUrl);
+    const meta = document.createElement('div'); meta.className='meta';
+    const span = document.createElement('span'); span.textContent = name;
+    const btn = document.createElement('button'); btn.className='btn small'; btn.textContent='Save';
+    btn.onclick = ()=> downloadURI(dataUrl, name);
+    meta.appendChild(span); meta.appendChild(btn);
+    card.appendChild(im); card.appendChild(meta);
+    els.thumbs.appendChild(card);
+
+    const seamImg = document.createElement('img'); seamImg.src = dataUrl; seamImg.alt = name; seamImg.style.display='block';
+    els.seamRow.appendChild(seamImg);
+    const lbImg = document.createElement('img'); lbImg.src = dataUrl; lbImg.alt = name; lbImg.style.display='block';
+    els.lbRow.appendChild(lbImg);
+  }
+  els.outputCard.style.display='block';
+  els.dlAllBtn.disabled = false;
+  toast('Portrait slices ready');
+  els.outputCard.scrollIntoView({behavior:'smooth', block:'start'});
+};
+
+function downloadURI(uri, filename){ const a = document.createElement('a'); a.href = uri; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); }
+els.dlAllBtn.onclick = async ()=>{
+  if(!outputs.length) return;
+  const zip = new JSZip(); const folder = zip.folder('slices');
+  await Promise.all(outputs.map(async o=>{ const res = await fetch(o.url); const blob = await res.blob(); folder.file(o.name, blob); }));
+  const blob = await zip.generateAsync({type:'blob'}); const url = URL.createObjectURL(blob);
+  downloadURI(url, 'panorama_slices_3x4.zip'); URL.revokeObjectURL(url); toast('ZIP downloaded');
+};
+els.zipBtn.onclick = ()=> els.dlAllBtn.onclick();
+
+// Seam borders toggle
+els.seamBorders.onchange = ()=>{
+  const on = els.seamBorders.checked;
+  els.seamRow.querySelectorAll('img').forEach(im=> im.style.outline = on ? '1px solid magenta' : 'none');
+  els.lbRow.querySelectorAll('img').forEach(im=> im.style.outline = on ? '1px solid magenta' : 'none');
+};
+
+// Simple image modal (thumbs)
+function openModal(src){ els.modalImg.src = src; els.modal.classList.add('open'); els.modal.setAttribute('aria-hidden','false'); }
+function closeModal(){ els.modal.classList.remove('open'); els.modal.setAttribute('aria-hidden','true'); els.modalImg.removeAttribute('src'); }
+els.modalClose.onclick = closeModal;
+els.modal.onclick = (e)=>{ if(e.target === els.modal) closeModal(); };
+document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') { closeModal(); closeSeam(); } });
+
+// Seam Lightbox
+function openSeam(){ els.lb.classList.add('open'); els.lb.setAttribute('aria-hidden','false'); updateLbZoom(); }
+function closeSeam(){ els.lb.classList.remove('open'); els.lb.setAttribute('aria-hidden','true'); }
+function updateLbZoom(){ const z = parseInt(els.lbZoom.value||'60')/100; els.lbCanvas.style.transform = `scale(${z})`; }
+els.seamOpen.onclick = openSeam;
+els.lbClose.onclick = closeSeam;
+els.lbZoom.oninput = updateLbZoom;
+</script>
+</body>
+</html>
